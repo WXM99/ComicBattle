@@ -75,18 +75,22 @@ const App: FC = () => {
 
     // Loop through 3 phases
     for (let i = 0; i < 3; i++) {
-      const resolution = resolvePhase(tempP1, tempP2, p1Queue[i], p2Queue[i], i + 1, selectedStage);
+      const p1Action = p1Queue[i];
+      const p2Action = p2Queue[i];
+      
+      const resolution = resolvePhase(tempP1, tempP2, p1Action, p2Action, i + 1, selectedStage);
       
       tempP1 = resolution.p1Next;
       tempP2 = resolution.p2Next;
 
-      // Generate Image for this phase
+      // Fetch "Static" Image for this phase
       const imgUrl = await generatePanelImage(
         tempP1.character,
         tempP2.character,
         selectedStage,
         resolution.result.description,
-        true
+        p1Action,
+        p2Action
       );
 
       newResults.push({ ...resolution.result, imgUrl });
@@ -100,6 +104,9 @@ const App: FC = () => {
       if (tempP1.currentHp <= 0 || tempP2.currentHp <= 0) {
         break;
       }
+      
+      // Small delay for dramatic effect
+      await new Promise(resolve => setTimeout(resolve, 800));
     }
 
     setIsProcessingTurn(false);
