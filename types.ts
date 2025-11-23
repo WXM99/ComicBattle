@@ -50,6 +50,8 @@ export interface TurnResult {
   p1EnergyChange: number;
   p2EnergyChange: number;
   phaseIndex: number; // 1, 2, or 3
+  p1Quote?: string;
+  p2Quote?: string;
 }
 
 export type GamePhase = 'MENU' | 'SELECTION' | 'BATTLE_INPUT' | 'BATTLE_RESOLUTION' | 'GAME_OVER';

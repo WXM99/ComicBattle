@@ -4,6 +4,18 @@ import { GRID_SIZE, INITIAL_ENERGY_PERCENT } from '../constants';
 // Helper to clamp grid position
 const clamp = (val: number, min: number, max: number) => Math.min(Math.max(val, min), max);
 
+const getRandomQuote = (type: 'ATTACK' | 'HIT' | 'BLOCK' | 'SKILL' | 'JUMP', skillName?: string) => {
+  const quotes = {
+    ATTACK: ["ORA!", "Take this!", "Too slow!", "Hyaaa!", "Eat this!"],
+    HIT: ["Gwah!", "N-Nani?!", "Impossible!", "Damn!", "Guh!"],
+    BLOCK: ["Useless!", "Weak!", "Is that all?", "Hmph.", "Predictable!"],
+    SKILL: [skillName ? `${skillName}!` : "Special Move!", "Die!", "Maximum Power!", "Begone!"],
+    JUMP: ["Up here!", "Missed!", "Fly!", "Too slow!"]
+  };
+  const list = quotes[type];
+  return list[Math.floor(Math.random() * list.length)];
+};
+
 export const initializePlayer = (character: any, startPos: number, facingRight: boolean): PlayerState => ({
   character: { ...character },
   currentHp: character.hp,
@@ -33,18 +45,14 @@ export const resolvePhase = (
   let p2HpDelta = 0;
   let p1EnergyDelta = 0;
   let p2EnergyDelta = 0;
+  let p1Quote = "";
+  let p2Quote = "";
 
   // --- STAGE MECHANICS (Pre-Move) ---
-  // s6: Zero-G Station - Jumps go 3 spaces instead of 2
   const jumpDist = stage.id === 's6' ? 3 : 2;
-  
-  // s7: Mangaka Desk - Ink makes movement sticky (costs energy)
   const moveCost = stage.id === 's7' ? 5 : 0;
-
-  // s8: Neon Rain - Skills cost more
   const extraSkillCost = stage.id === 's8' ? 10 : 0;
 
-  // s9: Spirit Drain - Constant energy drain
   if (stage.id === 's9') {
     p1EnergyDelta -= 5;
     p2EnergyDelta -= 5;
@@ -67,12 +75,22 @@ export const resolvePhase = (
      nextP1.isJumping = true;
      nextP1.position = clamp(nextP1.position + jumpDist, 0, GRID_SIZE);
      if (stage.id === 's6') log += "(Zero-G Jump!) ";
+     p1Quote = getRandomQuote('JUMP');
   }
-  if (p1Action === ActionType.SKILL) nextP1.currentEnergy -= (p1.character.skillCost + extraSkillCost);
+  if (p1Action === ActionType.SKILL) {
+    nextP1.currentEnergy -= (p1.character.skillCost + extraSkillCost);
+    p1Quote = getRandomQuote('SKILL', p1.character.skillName);
+  }
+  if (p1Action === ActionType.ATTACK) {
+    p1Quote = getRandomQuote('ATTACK');
+  }
+  if (p1Action === ActionType.BLOCK) {
+    p1Quote = getRandomQuote('BLOCK'); // Initial thought
+  }
 
   // P2 Move
   if (p2Action === ActionType.MOVE_FORWARD) {
-    nextP2.position = clamp(nextP2.position - 1, 0, GRID_SIZE); // P2 moves Left
+    nextP2.position = clamp(nextP2.position - 1, 0, GRID_SIZE); 
     nextP2.currentEnergy -= moveCost;
     if (moveCost > 0) log += "Ink slows P2! ";
   }
@@ -84,15 +102,21 @@ export const resolvePhase = (
     nextP2.isJumping = true;
     nextP2.position = clamp(nextP2.position - jumpDist, 0, GRID_SIZE);
     if (stage.id === 's6') log += "(Zero-G Jump!) ";
+    p2Quote = getRandomQuote('JUMP');
   }
-  if (p2Action === ActionType.SKILL) nextP2.currentEnergy -= (p2.character.skillCost + extraSkillCost);
+  if (p2Action === ActionType.SKILL) {
+    nextP2.currentEnergy -= (p2.character.skillCost + extraSkillCost);
+    p2Quote = getRandomQuote('SKILL', p2.character.skillName);
+  }
+  if (p2Action === ActionType.ATTACK) {
+    p2Quote = getRandomQuote('ATTACK');
+  }
 
   // Set Blocking state
   if (p1Action === ActionType.BLOCK) nextP1.isBlocking = true;
   if (p2Action === ActionType.BLOCK) nextP2.isBlocking = true;
 
   // --- STAGE MECHANICS (Post-Move, Pre-Combat) ---
-  // s4: Gale Force Canyon - Wind pushes everyone right (+1) if possible
   if (stage.id === 's4') {
     if (nextP1.position < GRID_SIZE) nextP1.position += 1;
     if (nextP2.position < GRID_SIZE) nextP2.position += 1;
@@ -106,8 +130,8 @@ export const resolvePhase = (
   
   // P1 Attacks
   const p1Hits = (p1Action === ActionType.ATTACK && distance <= 1 && !nextP2.isJumping);
-  const p1SkillHits = (p1Action === ActionType.SKILL && distance <= 3); // Skill has range 3
-  const p1JumpHit = (p1Action === ActionType.JUMP && nextP1.position === nextP2.position); // Mario stomp logic
+  const p1SkillHits = (p1Action === ActionType.SKILL && distance <= 3); 
+  const p1JumpHit = (p1Action === ActionType.JUMP && nextP1.position === nextP2.position); 
 
   // P2 Attacks
   const p2Hits = (p2Action === ActionType.ATTACK && distance <= 1 && !nextP1.isJumping);
@@ -118,24 +142,27 @@ export const resolvePhase = (
   if (p1Hits) {
     if (nextP2.isBlocking) {
       log += `${p2.character.name} BLOCKS ${p1.character.name}'s punch! `;
-      p2HpDelta -= 2; // Chip damage
-      p2EnergyDelta += 20; // BLOCK RECOVERY: 20%
+      p2HpDelta -= 2; 
+      p2EnergyDelta += 20;
+      p2Quote = getRandomQuote('BLOCK');
     } else {
       log += `${p1.character.name} HITS ${p2.character.name}! `;
       p2HpDelta -= 10;
-      p1EnergyDelta += 10; // HIT RECOVERY: 10%
+      p1EnergyDelta += 10;
+      p2Quote = getRandomQuote('HIT');
     }
   }
   
   if (p1SkillHits) {
     if (nextP2.isBlocking) {
        log += `${p2.character.name} barely survives ${p1.character.skillName}! `;
-       p2HpDelta -= 15; // Skill penetrates block partially
-       p2EnergyDelta += 20; // BLOCK RECOVERY: 20%
+       p2HpDelta -= 15; 
+       p2EnergyDelta += 20;
+       p2Quote = "Gnnnh!";
     } else {
       log += `${p1.character.name} lands ${p1.character.skillName}! `;
       p2HpDelta -= 30;
-      // NO ENERGY RECOVERY ON SKILL HIT
+      p2Quote = getRandomQuote('HIT');
     }
   }
 
@@ -143,6 +170,7 @@ export const resolvePhase = (
     log += `${p1.character.name} lands on ${p2.character.name}! `;
     p2HpDelta -= 15;
     nextP2.position = clamp(nextP2.position + 1, 0, GRID_SIZE);
+    p2Quote = getRandomQuote('HIT');
   }
 
   // --- Damage P1 ---
@@ -150,11 +178,13 @@ export const resolvePhase = (
     if (nextP1.isBlocking) {
       log += `${p1.character.name} BLOCKS ${p2.character.name}'s attack! `;
       p1HpDelta -= 2;
-      p1EnergyDelta += 20; // BLOCK RECOVERY: 20%
+      p1EnergyDelta += 20; 
+      p1Quote = getRandomQuote('BLOCK');
     } else {
       log += `${p2.character.name} HITS ${p1.character.name}! `;
       p1HpDelta -= 10;
-      p2EnergyDelta += 10; // HIT RECOVERY: 10%
+      p2EnergyDelta += 10; 
+      p1Quote = getRandomQuote('HIT');
     }
   }
 
@@ -162,11 +192,12 @@ export const resolvePhase = (
      if (nextP1.isBlocking) {
        log += `${p1.character.name} withstands ${p2.character.skillName}! `;
        p1HpDelta -= 15;
-       p1EnergyDelta += 20; // BLOCK RECOVERY: 20%
+       p1EnergyDelta += 20;
+       p1Quote = "Ugh...!";
      } else {
       log += `${p2.character.name} unleashed ${p2.character.skillName}! `;
       p1HpDelta -= 30;
-      // NO ENERGY RECOVERY ON SKILL HIT
+      p1Quote = getRandomQuote('HIT');
      }
   }
 
@@ -174,18 +205,20 @@ export const resolvePhase = (
     log += `${p2.character.name} crushes ${p1.character.name} from above! `;
     p1HpDelta -= 15;
     nextP1.position = clamp(nextP1.position - 1, 0, GRID_SIZE);
+    p1Quote = getRandomQuote('HIT');
   }
 
   // --- STAGE MECHANICS (Damage / Wall Splat) ---
-  // s5: Crystal Cavern - If damage taken and at edge, extra damage
   if (stage.id === 's5') {
     if (p1HpDelta < 0 && (nextP1.position === 0 || nextP1.position === GRID_SIZE)) {
       log += " Wall Splat! ";
       p1HpDelta -= 5;
+      p1Quote += " (Wall!)";
     }
     if (p2HpDelta < 0 && (nextP2.position === 0 || nextP2.position === GRID_SIZE)) {
       log += " Wall Splat! ";
       p2HpDelta -= 5;
+      p2Quote += " (Wall!)";
     }
   }
 
@@ -219,7 +252,9 @@ export const resolvePhase = (
       p2HpChange: p2HpDelta,
       p1EnergyChange: p1EnergyDelta,
       p2EnergyChange: p2EnergyDelta,
-      phaseIndex
+      phaseIndex,
+      p1Quote: p1Quote || undefined,
+      p2Quote: p2Quote || undefined
     }
   };
 };
